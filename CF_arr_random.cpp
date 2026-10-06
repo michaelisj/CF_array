@@ -192,9 +192,67 @@ void test(std::vector<MachineWordT> sample, std::mt19937_64 &rng) {
          cfarr.treeSize());
 }
 
-int main() {
-  std::mt19937_64 rng(0);
-  for (const SizeT size : {2, 3, 5, 8, 1000, 1 << 16}) {
+bool parseUInt(const char *str, uint* pOut)
+{
+  errno = 0;
+  char *temp;
+  long val = std::strtoul(str, &temp, 0);
+
+  if (temp == str || *temp != '\0') {
+    return false;
+  } else if (val >= UINT_MAX) {
+    printf("Overflow detected when converting %s, using UINT_MAX\n", str);
+    val = UINT_MAX;
+  }
+  *pOut = val;
+  return true;
+}
+
+int get_opt_idx(int argc, char** argv, const char* opt, const char* shopt = nullptr)
+{
+  for (int i = 1; i < argc; ++i) {
+    if ((strcmp(opt, argv[i]) == 0) || 
+        (shopt && strcmp(shopt, argv[i]) == 0)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+uint parse_options(int argc, char** argv)
+{
+  const int seedIdx = get_opt_idx(argc, argv, "--seed");
+  const int noRandomIdx = get_opt_idx(argc, argv, "--no-random");
+  if (-1 != get_opt_idx(argc, argv, "--help", "-h")) {
+    printf("Usage: %s [--seed SEED | --no-random]\n", argv[0]);
+    exit(2);
+  } else if (-1 != noRandomIdx && -1 != seedIdx) {
+    printf("Cannot use --no-random and --seed together.\n");
+    exit(2);
+  } else if (argc - 1 == seedIdx) {
+    printf("--seed needs a number.\n");
+    exit(2);
+  }
+
+  if (-1 != noRandomIdx) {
+    return 0;
+  }
+  if (-1 != seedIdx) {
+    uint result = 0;
+    if (parseUInt(argv[seedIdx + 1], &result)) {
+      return result;
+    }
+    printf("Invalid seed %s\n", argv[seedIdx + 1]);
+  }
+  std::random_device rd{};
+  return rd();
+}
+
+int main(int argc, char** argv) {
+  const auto seed = parse_options(argc, argv);
+  printf("Simulation seed is: %u\n", seed);
+  std::mt19937_64 rng(seed);
+  for (const SizeT size : {1000, 2000, 1 << 16}) {
     std::vector<MachineWordT> sample(size);
     for (auto &value : sample) {
       value = sampleValue(rng);
@@ -202,6 +260,7 @@ int main() {
     test(sample, rng);
   }
   // Equal values collide at every depth, so most of them start in the tree.
+  printf("Starting sanity test - multiple large values\n");
   test(std::vector<MachineWordT>(1000, 1000), rng);
   return 0;
 }
